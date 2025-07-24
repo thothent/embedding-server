@@ -8,13 +8,14 @@ from sentence_transformers import SentenceTransformer
 MODEL = "mixedbread-ai/mxbai-embed-large-v1"
 
 model = SentenceTransformer(MODEL)
-redis_client = redis.Redis(host="localhost", port=6379, db=0)
+redis_client = redis.Redis(host="127.0.5.1", port=6379, db=0)
 
 STREAM_NAME = "embeddings_job_queue"
 GROUP_NAME = "embeddings_producers_group"
 
 
 class EmbeddingsBatchData:
+    job_id: str
     type: Literal["query", "passage"]
     inputs: List[str]
 
@@ -62,6 +63,7 @@ def fetch_batch() -> EmbeddingsBatchData:
 
     try:
         batchData = EmbeddingsBatchData()
+        batchData.job_id = msg_id.decode("utf-8")
         batchData.type = data[b"type"]
         batchData.inputs = json.loads(data[b"inputs"])
     except Exception:
@@ -87,9 +89,11 @@ def main():
     print("Server started")
     while True:
         batch = fetch_batch()
-        print(batch.inputs)
+        print("Got batch")
         embeddings = process_batch(batch)
-        print(embeddings.embeddings)
+        print("Processed batch: " + batch.job_id)
+        redis_client.set(batch.job_id, str(embeddings.embeddings))
+        print("Returned result")
 
 
 if __name__ == "__main__":
